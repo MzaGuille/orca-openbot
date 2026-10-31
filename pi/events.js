@@ -17,8 +17,9 @@ export function createPiEventNormalizer() {
     if (event.type === 'agent_start') {
       // Automatic follow-up runs belong to the same unsettled operation.
       if (!runOpen) { hadError = false; errorMessage = ''; }
+      // A mid-turn agent_start keeps the question already captured; only a new turn clears it.
+      if (!runOpen) pendingQuestion = null;
       runOpen = true;
-      pendingQuestion = null;
       return [];
     }
     const record = { source: 'pi-ext', name: event.type };

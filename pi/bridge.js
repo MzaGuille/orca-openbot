@@ -95,7 +95,11 @@ export function registerPiBridge(pi, { env = process.env, now = Date.now, pid = 
       write('tool_end', { tool_call_id: event.toolCallId ?? null, tool_name: event.toolName ?? null,
         is_error: event.isError === true, duration_ms: event.durationMs ?? null });
     }),
-    pi.on('agent_start', () => { runOpen = true; outcome = null; stopReason = null; pendingQuestion = null; }),
+    pi.on('agent_start', () => {
+      // An agent_start inside an open turn must not drop the question already captured.
+      if (!runOpen) pendingQuestion = null;
+      runOpen = true; outcome = null; stopReason = null;
+    }),
     pi.on('turn_start', event => {
       write('turn_start', { turn_index: Number.isInteger(event.turnIndex) ? event.turnIndex : null,
         timestamp: Number.isFinite(event.timestamp) ? event.timestamp : null });

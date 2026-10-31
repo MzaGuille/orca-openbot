@@ -109,3 +109,36 @@ test('agent_start drops a question captured in an earlier run', () => {
   ]);
   assert.equal('question' in settled(records), false);
 });
+
+test('an agent_start in the middle of an open turn keeps the captured question', () => {
+  const records = run([
+    { type: 'agent_start' },
+    { type: 'message_end', message: assistant('¿Seguimos con A o con B?') },
+    { type: 'agent_start' },
+    { type: 'agent_settled', aborted: false },
+  ]);
+  assert.equal(settled(records).question, '¿Seguimos con A o con B?');
+  assert.equal(mirror(records).kind, 'question');
+  assert.equal(mirror(records).title, '¿Seguimos con A o con B?');
+});
+
+test('an agent_start with the turn closed does not inherit an earlier question', () => {
+  const records = run([
+    { type: 'message_end', message: assistant('¿Seguimos con A o con B?') },
+    { type: 'agent_start' },
+    { type: 'agent_settled', aborted: false },
+  ]);
+  assert.equal('question' in settled(records), false);
+  assert.equal(mirror(records)?.kind === 'question', false);
+});
+
+test('a new turn after a settled question starts without it', () => {
+  const records = run([
+    { type: 'agent_start' },
+    { type: 'message_end', message: assistant('¿Seguimos con A o con B?') },
+    { type: 'agent_settled', aborted: false },
+    { type: 'agent_start' },
+    { type: 'agent_settled', aborted: false },
+  ]);
+  assert.equal('question' in settled(records), false);
+});

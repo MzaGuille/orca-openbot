@@ -43,3 +43,35 @@ test('a malformed bridge record yields null and does not throw', () => {
   assert.equal(readBridgeTurn('{"type":"done","detail":{"question":1}}\n').doneQuestion, null);
   assert.doesNotThrow(() => readBridgeTurn('{'));
 });
+
+test('an agent_start in the middle of an open turn keeps the captured question', t => {
+  const s = setup(t);
+  s.handlers.session_start({}, { sessionManager: { getSessionId: () => 's1' } });
+  s.handlers.agent_start({});
+  s.handlers.message_end({ message: assistant(QUESTION) });
+  s.handlers.agent_start({});
+  s.handlers.agent_settled({ aborted: false });
+  const turn = readBridgeTurn(s.text());
+  assert.equal(turn.doneQuestion, QUESTION);
+  assert.equal(turn.open, false);
+});
+
+test('an agent_start with the turn closed does not inherit an earlier question', t => {
+  const s = setup(t);
+  s.handlers.session_start({}, { sessionManager: { getSessionId: () => 's1' } });
+  s.handlers.message_end({ message: assistant(QUESTION) });
+  s.handlers.agent_start({});
+  s.handlers.agent_settled({ aborted: false });
+  assert.equal(readBridgeTurn(s.text()).doneQuestion, null);
+});
+
+test('a new turn after a settled question starts without it', t => {
+  const s = setup(t);
+  s.handlers.session_start({}, { sessionManager: { getSessionId: () => 's1' } });
+  s.handlers.agent_start({});
+  s.handlers.message_end({ message: assistant(QUESTION) });
+  s.handlers.agent_settled({ aborted: false });
+  s.handlers.agent_start({});
+  s.handlers.agent_settled({ aborted: false });
+  assert.equal(readBridgeTurn(s.text()).doneQuestion, null);
+});
