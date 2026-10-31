@@ -2,6 +2,7 @@
 // No filesystem, configuration or network access in this layer.
 import { evaluateSignals } from '../events/attention/evaluate.js';
 import { sanitizeAttentionRecord } from '../events/sanitize.js';
+import { nextPendingConsent } from '../events/consent.js';
 import { trailingQuestion } from './question-text.js';
 
 export function createPiEventNormalizer() {
@@ -9,16 +10,17 @@ export function createPiEventNormalizer() {
   let errorMessage = '';
   let runOpen = false;
   let pendingQuestion = null;
+  let pendingConsent = null;
   return event => {
     if (event.type === 'session_start') {
-      hadError = false; errorMessage = ''; runOpen = false; pendingQuestion = null;
+      hadError = false; errorMessage = ''; runOpen = false; pendingQuestion = null; pendingConsent = null;
       return [];
     }
     if (event.type === 'agent_start') {
       // Automatic follow-up runs belong to the same unsettled operation.
       if (!runOpen) { hadError = false; errorMessage = ''; }
       // A mid-turn agent_start keeps the question already captured; only a new turn clears it.
-      if (!runOpen) pendingQuestion = null;
+      if (!runOpen) { pendingQuestion = null; pendingConsent = null; }
       runOpen = true;
       return [];
     }
@@ -34,6 +36,8 @@ export function createPiEventNormalizer() {
         record.isError = event.isError === true;
         record.msg = record.isError && Array.isArray(event.result?.content)
           ? event.result.content.filter(c => c?.type === 'text' && typeof c.text === 'string').map(c => c.text).join('\n') : '';
+        // The consent envelope arrives as the typed result of gentle_review, never parsed from prose.
+        pendingConsent = nextPendingConsent(pendingConsent, event);
         break;
       case 'message_end':
         record.stopReason = event.message?.role === 'assistant' ? event.message.stopReason : null;
@@ -49,8 +53,10 @@ export function createPiEventNormalizer() {
         record.aborted = event.aborted === true;
         record.msg = errorMessage;
         if (hadError === false && event.aborted !== true && pendingQuestion) record.question = pendingQuestion;
+        if (hadError === false && event.aborted !== true && pendingConsent) record.consent = pendingConsent;
         runOpen = false;
         pendingQuestion = null;
+        pendingConsent = null;
         break;
     }
     const attention = evaluateSignals(record);
@@ -64,7 +70,7 @@ export function createPiEventNormalizer() {
     const status = ['blocked', 'question'].includes(attention.attentionKind) ? 'blocked' : attention.attentionKind;
     return [clean, sanitizeAttentionRecord({ source: 'osc', name: 'program_status', status,
       ...(status === 'blocked' ? { kind: attention.attentionKind === 'question' ? 'question' : 'permission' } : {}),
-      title: record.question || record.title || '', msg: record.msg || '',
+      title: record.consent?.headline || record.question || record.title || '', msg: record.msg || '',
     })];
   };
 }

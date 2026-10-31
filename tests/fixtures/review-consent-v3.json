@@ -1,0 +1,28 @@
+{
+ "schema": "gentle-ai.review-integration.consent/v3",
+ "contract": "gentle-ai.review-integration/v2",
+ "operation": "review.start",
+ "action": "consent_required",
+ "agent": "pi",
+ "blocking": true,
+ "projection": "workspace",
+ "risk_level": "high",
+ "changed_files": 12,
+ "changed_lines": 347,
+ "headline": "Gentle AI can review this change before you call it done.",
+ "reason": "Review can help detect execution issues in these changes.",
+ "choices": [
+  {
+   "answer": "granted",
+   "label": "Review this change",
+   "effect": "Reviews only this change; later medium- or high-risk changes ask again, and delivery needs separate approval.",
+   "invocation": "gentle-ai review start --contract gentle-ai.review-integration/v2 --cwd /home/ubuntu/orca/workspaces/orca-openbot/grace-stalled --target sha256:cc2cc5aa7a3271392e1196f90b65617281d0fe747f1cafe4143da76d9d34fd59 --target-evidence v1:base-diff:workspace:c6908c3b172e354724d0b24db8597feaded53bbd:a2e21425c65f79b9c6e0658fd4d79304ecef72e5:sha256:08cb96edd53fb89440e5a8fcb205bc7f775627220e617dac1b558dd43852fea0 --projection workspace --agent pi --lineage review-0a6ea52896442898 --base-ref c6908c3b172e354724d0b24db8597feaded53bbd --committed-only --lenses review-risk,review-resilience,review-reliability --lenses-reason 'Added events-full.jsonl persisting full redacted payloads (new stored data, secrets redaction, size rotation); heartbeat-triggered ingest spawn, stalled.lock and best-effort logging (failure and concurrency behavior); new stall/turn-open logic in the bridge reader that tests should pin.' --consent granted"
+  },
+  {
+   "answer": "declined",
+   "label": "Skip this time",
+   "effect": "Skips only this change; no review record is created, and future reviews stay enabled.",
+   "invocation": "gentle-ai review start --contract gentle-ai.review-integration/v2 --cwd /home/ubuntu/orca/workspaces/orca-openbot/grace-stalled --target sha256:cc2cc5aa7a3271392e1196f90b65617281d0fe747f1cafe4143da76d9d34fd59 --target-evidence v1:base-diff:workspace:c6908c3b172e354724d0b24db8597feaded53bbd:a2e21425c65f79b9c6e0658fd4d79304ecef72e5:sha256:08cb96edd53fb89440e5a8fcb205bc7f775627220e617dac1b558dd43852fea0 --projection workspace --agent pi --lineage review-0a6ea52896442898 --base-ref c6908c3b172e354724d0b24db8597feaded53bbd --committed-only --lenses review-risk,review-resilience,review-reliability --lenses-reason 'Added events-full.jsonl persisting full redacted payloads (new stored data, secrets redaction, size rotation); heartbeat-triggered ingest spawn, stalled.lock and best-effort logging (failure and concurrency behavior); new stall/turn-open logic in the bridge reader that tests should pin.' --consent declined"
+  }
+ ]
+}

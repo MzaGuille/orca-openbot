@@ -5,6 +5,7 @@ import { LABEL_RE } from '../core/config.js';
 import { ATTENTION_KINDS } from './attention/core.js';
 import { sanitizeAttention, sanitizeAttentionRecord } from './sanitize.js';
 import { nextHints } from './hints.js';
+import { CONSENT_KIND } from './consent.js';
 import { sanitizeTelemetry, validateTelemetry } from './telemetry.js';
 
 // Moved here from states.js (plan-orca-openbot §3): the only piece of it the payload needs.
@@ -54,7 +55,7 @@ export function buildPayload({
   // Enum values are protocol constants, not arbitrary text to redact.
   if (NOTIFY_STATES.includes(state)) clean.state = state;
   if (ATTENTION_KINDS.includes(attentionKind)) clean.attentionKind = attentionKind;
-  const questionKeys = ['text', 'options', 'selected_index', ...(typeof question?.parse_ok === 'boolean' ? ['parse_ok'] : []), ...(typeof question?.parse_reason === 'string' ? ['parse_reason'] : [])];
+  const questionKeys = ['text', 'options', 'selected_index', ...(question?.kind === CONSENT_KIND ? ['kind'] : []), ...(typeof question?.parse_ok === 'boolean' ? ['parse_ok'] : []), ...(typeof question?.parse_reason === 'string' ? ['parse_reason'] : [])];
   clean.question = question === null ? null : sanitizeAttentionRecord(
     Object.fromEntries(Object.entries(question).filter(([key]) => questionKeys.includes(key))),
     { secrets, sensitiveNames },
@@ -76,7 +77,7 @@ export function buildPayload({
     summary: String(summaryText).replace(/\s+/g, ' ').trim().slice(0, 240) || ('Attention: ' + clean.attentionKind),
     errors: errorLines,
     last_lines: clean.lines.flatMap(cleanLines).filter(line => !duplicateErrors.has(line.trim())).slice(-MAX_LAST_LINES),
-    next_hint: nextHints({ paneId: clean.paneId, attentionKind: clean.attentionKind }),
+    next_hint: nextHints({ paneId: clean.paneId, attentionKind: clean.attentionKind, questionKind: clean.question?.kind }),
     question: clean.question,
     ...(telemetry !== undefined ? { telemetry: sanitizeTelemetry(telemetry, attentionKind, { secrets, sensitiveNames }) } : {}),
     ...(clean.signal !== null ? { signal: clean.signal } : {}),
@@ -151,7 +152,8 @@ export function validatePayload(p) {
       errors.push('question must be {text, options[]}');
     } else {
       if (p.state !== 'question' && !(p.state === 'blocked' && (p.attention_kind === 'waiting_input' || typeof q.parse_ok === 'boolean'))) errors.push('question is only allowed when state is question');
-      if (Object.keys(q).some((key) => !['text', 'options', 'selected_index', 'parse_ok', 'parse_reason'].includes(key))) errors.push('unexpected question field');
+      if (Object.keys(q).some((key) => !['text', 'options', 'selected_index', 'kind', 'parse_ok', 'parse_reason'].includes(key))) errors.push('unexpected question field');
+      if ('kind' in q && q.kind !== CONSENT_KIND) errors.push('question kind is not supported');
       if ('parse_reason' in q && !['no_options', 'encoding', 'unreadable'].includes(q.parse_reason)) errors.push('question parse_reason is not supported');
       if (q.parse_ok === false && !q.parse_reason) errors.push('question parse_reason is required when parse_ok is false');
       if ('parse_ok' in q && typeof q.parse_ok !== 'boolean') errors.push('question parse_ok must be boolean');
@@ -174,7 +176,7 @@ export function validatePayload(p) {
     }
   }
   if ('next_hint' in p) {
-    const expected = nextHints({ paneId: p.pane_id, attentionKind: p.attention_kind || p.state });
+    const expected = nextHints({ paneId: p.pane_id, attentionKind: p.attention_kind || p.state, questionKind: p.question?.kind });
     if (!p.next_hint || Array.isArray(p.next_hint) || Object.keys(p.next_hint).some(key => !['read', 'reply'].includes(key))
       || !isStr(p.next_hint.read) || !isStrOrNull(p.next_hint.reply) || p.next_hint.read !== expected.read
       || p.next_hint.reply !== expected.reply) {
