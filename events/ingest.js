@@ -10,6 +10,7 @@ import { piRecordPath } from './pi-path.js';
 import { isPiTelemetry, validateTelemetryRecord } from './telemetry.js';
 import { evaluateSignals, silentCommandFailure } from './attention/evaluate.js';
 import { sanitizeAttentionRecord } from './sanitize.js';
+import { consentQuestion } from './consent.js';
 import { buildPayload, validatePayload } from './payload.js';
 import { checkAndRecord, DEBOUNCE_MS, debounceAt } from './debounce.js';
 import { enqueue } from './queue.js';
@@ -89,8 +90,11 @@ function consume({ paneId, env, now, spawnFlusher }) {
         && prev?.name === 'agent_settled' && prev?.aborted === true;
       const mirroredToolRecovery = raw.source === 'osc' && raw.name === 'program_status' && raw.status === 'error'
         && prev?.name === 'tool_execution_end' && prev?.isError === true && (recoveredTool(prev) || !evaluateSignals(prev));
+      // The osc mirror of a settled review consent repeats the headline with no options: one event, not two.
+      const mirroredConsent = raw.source === 'osc' && raw.name === 'program_status' && raw.kind === 'question'
+        && prev?.name === 'agent_settled' && Boolean(consentQuestion(prev.consent));
       prev = raw;
-      if (mirroredAbort || mirroredToolRecovery || recoveredTool(raw)) continue;
+      if (mirroredConsent || mirroredAbort || mirroredToolRecovery || recoveredTool(raw)) continue;
       let attention = evaluateSignals(raw);
       if (!attention) continue;
       // A Pi picker opened after the turn settled (/gentle:profiles) is not a question from the agent.
@@ -108,6 +112,10 @@ function consume({ paneId, env, now, spawnFlusher }) {
         attention = { ...attention, attentionKind: 'question', state: 'question' };
       } else if (promptKind === 'confirm') {
         // Confirm stays blocked and carries no question.
+      } else if (attention.id === 'pi-review-consent' && consentQuestion(raw.consent)) {
+        // gentle_review asked for consent: the question carries both ready commands.
+        question = clean(consentQuestion(raw.consent));
+        attention = { ...attention, signal: 'pi-review-consent' };
       } else if (attention.attentionKind === 'question' && raw.name === 'agent_settled' && typeof raw.question === 'string') {
         // The extension already captured the trailing question.
         question = clean({ text: raw.question, options: [], selected_index: null });

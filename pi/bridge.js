@@ -6,6 +6,7 @@ import { ensurePrivateDir } from '../core/fsutil.js';
 import { bridgePanePath, SCHEMA_VERSION } from '../events/pi-bridge.js';
 import { sanitizeAttentionRecord } from '../events/sanitize.js';
 import { envPaneId } from '../events/pi-path.js';
+import { nextPendingConsent } from '../events/consent.js';
 import { trailingQuestion } from './question-text.js';
 import { spawnIngest as defaultSpawnIngest } from './runtime.js';
 
@@ -62,7 +63,7 @@ export function registerPiBridge(pi, { env = process.env, now = Date.now, pid = 
   setInterval: every = setInterval, clearInterval: stop = clearInterval } = {}) {
   const pane = envPaneId(env);
   let sessionId = null, timer = null, started = null;
-  let runOpen = false, outcome = null, retry = null, stopReason = null, pendingQuestion = null;
+  let runOpen = false, outcome = null, retry = null, stopReason = null, pendingQuestion = null, pendingConsent = null;
   const write = (type, detail = { session_id: sessionId, pid }) => {
     if (!pane) return;
     try {
@@ -80,7 +81,7 @@ export function registerPiBridge(pi, { env = process.env, now = Date.now, pid = 
       if (!pane) return;
       clear();
       sessionId = sessionOf(ctx);
-      runOpen = false; outcome = null; retry = null; pendingQuestion = null;
+      runOpen = false; outcome = null; retry = null; pendingQuestion = null; pendingConsent = null;
       write('session_start');
       // Ingest only runs when Pi appends a record, so a silent turn is evaluated on the heartbeat (stalled).
       timer = every(() => {
@@ -93,16 +94,17 @@ export function registerPiBridge(pi, { env = process.env, now = Date.now, pid = 
       if (!pane) return;
       clear();
       sessionId = sessionOf(ctx);
-      runOpen = false; outcome = null; retry = null; pendingQuestion = null;
+      runOpen = false; outcome = null; retry = null; pendingQuestion = null; pendingConsent = null;
       write('session_shutdown');
     }),
     pi.on('tool_execution_end', event => {
+      pendingConsent = nextPendingConsent(pendingConsent, event);
       write('tool_end', { tool_call_id: event.toolCallId ?? null, tool_name: event.toolName ?? null,
         is_error: event.isError === true, duration_ms: event.durationMs ?? null });
     }),
     pi.on('agent_start', () => {
       // An agent_start inside an open turn must not drop the question already captured.
-      if (!runOpen) pendingQuestion = null;
+      if (!runOpen) { pendingQuestion = null; pendingConsent = null; }
       runOpen = true; outcome = null; stopReason = null;
     }),
     pi.on('turn_start', event => {
@@ -134,9 +136,11 @@ export function registerPiBridge(pi, { env = process.env, now = Date.now, pid = 
       if (['completed', 'error', 'aborted'].includes(event.outcome)) outcome = event.outcome;
     }),
     pi.on('agent_settled', event => {
-      write('done', { outcome: event.aborted === true ? 'aborted' : outcome ?? 'completed', stop_reason: stopReason,
-        ...(event.aborted !== true && pendingQuestion ? { question: pendingQuestion } : {}) });
-      runOpen = false; outcome = null; retry = null; stopReason = null; pendingQuestion = null;
+      const settledOutcome = event.aborted === true ? 'aborted' : outcome ?? 'completed';
+      write('done', { outcome: settledOutcome, stop_reason: stopReason,
+        ...(event.aborted !== true && pendingQuestion ? { question: pendingQuestion } : {}),
+        ...(settledOutcome === 'completed' && pendingConsent ? { consent: pendingConsent } : {}) });
+      runOpen = false; outcome = null; retry = null; stopReason = null; pendingQuestion = null; pendingConsent = null;
     }),
     pi.on('after_provider_response', event => {
       if (!runOpen) return;

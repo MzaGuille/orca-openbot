@@ -134,6 +134,13 @@ export const SIGNALS = [
     "fixture": "pi-settled-error.json",
     "description": "pi settled error"
   },
+  // A gentle_review consent envelope seen this turn (#5); the dotted key needs a non-empty headline.
+  { id: 'pi-review-consent', source: 'pi-ext',
+    match: { name: 'agent_settled', hadError: false, aborted: false, 'consent.headline': /\S/ },
+    attention_kind: 'question', priority: 30, fixture: 'pi-review-consent.json',
+    summary: record => record.consent.headline + ' (revisión, riesgo ' + record.consent.risk_level + ', '
+      + record.consent.changed_files + ' archivos)',
+    description: 'Review consent requested by gentle_review' },
   {
     "id": "pi-settled-question",
     "source": "pi-ext",

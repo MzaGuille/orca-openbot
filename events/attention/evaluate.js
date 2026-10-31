@@ -31,7 +31,7 @@ export function evaluateSignals(record = {}) {
   if (entry) return {
     id: entry.id, attentionKind: entry.attention_kind,
     ...(entry.veto_done ? { vetoDone: true } : {}),
-    ...(entry.summary ? { summary: entry.summary } : {}),
+    ...(entry.summary ? { summary: typeof entry.summary === 'function' ? entry.summary(record) : entry.summary } : {}),
     ...(entry.reason ? { reason: entry.reason } : {}),
     ...(entry.attention_kind === 'error' ? { errors: [...new Set(errorLines)] } : {}),
     state: ['unknown', 'stalled', 'cache_miss', 'context'].includes(entry.attention_kind) ? 'blocked' : entry.attention_kind,
