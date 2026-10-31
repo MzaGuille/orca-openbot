@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Una pregunta en prosa de Pi bajo Gentle Shell llega como `question` y no como `done`. Un `agent_start` con el turno ya abierto ya no borra la pregunta capturada (`pi/bridge.js`, `pi/events.js`). Cierra #2.
+
 ## 0.1.0
 
 Primera versión. Puente entre Pi (Gentle Shell en Orca) y OpenBot, extraído de
