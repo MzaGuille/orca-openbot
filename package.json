@@ -1,0 +1,17 @@
+{
+  "name": "orca-openbot",
+  "version": "0.1.0",
+  "description": "Bridge between Pi (Gentle Shell in Orca) and OpenBot: attention events out, acknowledged orders in",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "orca-openbot": "bin/orca-openbot.js"
+  },
+  "scripts": {
+    "test": "node tests/run.js"
+  }
+}
