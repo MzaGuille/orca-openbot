@@ -14,6 +14,7 @@ import { buildPayload, validatePayload } from './payload.js';
 import { checkAndRecord, DEBOUNCE_MS, debounceAt } from './debounce.js';
 import { enqueue } from './queue.js';
 import { piMenuOutsideTurn } from './pi-bridge.js';
+import { enqueueStalled } from './stalled.js';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -34,6 +35,20 @@ const orcaPane = (paneId, r) => ({ pane_id: paneId, workspace_id: 'orca', agent:
 const EMPTY = () => ({ ok: true, processed: 0, queued: 0 });
 export function runIngest({ paneId, env = process.env, now = Date.now(), spawnFlusher = defaultSpawnFlusher } = {}) {
   if (!paneId) throw invalid('--pane is required');
+  const result = consume({ paneId, env, now, spawnFlusher });
+  // A silent turn appends no Pi record, so the stalled check runs after every ingest, with or without new records.
+  const stalled = checkStalled({ paneId, env, now });
+  if (stalled) spawnFlusher(env);
+  return stalled ? { ...result, queued: result.queued + stalled } : result;
+}
+
+function checkStalled({ paneId, env, now }) {
+  const cfg = loadConfig({ env });
+  if (validateConfig(cfg).length) return 0;
+  return enqueueStalled({ paneId, env, dir: defaultStateDir(env), cfg, redaction: redactionFor(cfg), now });
+}
+
+function consume({ paneId, env, now, spawnFlusher }) {
   const file = piRecordPath(env, paneId), dir = defaultStateDir(env);
   try { readFileSync(file); } catch (error) { if (error.code === 'ENOENT') return EMPTY(); throw error; }
   return withLock(file + '.lock', () => {

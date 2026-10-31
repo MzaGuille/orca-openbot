@@ -5,7 +5,7 @@ import { piBridgePath } from './pi-path.js';
 
 export const SCHEMA_VERSION = 1;
 const KNOWN = new Set(['session_start', 'heartbeat', 'session_shutdown', 'tool_end', 'done', 'retrying',
-  'turn_start', 'tool_start', 'compact_failed']);
+  'turn_start', 'tool_start', 'compact_failed', 'message_end', 'ui_prompt_start', 'ui_prompt_end']);
 
 /** Complete known records, in last-occurrence order. Retry updates group by streak_id;
  * legacy records fall back to event_id. Unknown versions/fields are tolerated. */
@@ -83,6 +83,10 @@ export function bridgeLiveness(summary, isAlive = pidAlive, now = Date.now()) {
 
 const TURN_EVENTS = new Set(['turn_start', 'tool_start', 'tool_end', 'retrying']);
 
+// The bridge and the attention writer stamp one Pi event with separate clock reads, so a prompt's
+// bridge record can land a few ms after the attention record's `at`. Prompt records get this slack.
+export const PROMPT_SKEW_MS = 5000;
+
 /** Pi turn state from bridge text, as of `at` (epoch ms; default: everything). `open` is true
  * from a turn/tool event until the next `done`; false in a fresh session and after a `done`; null
  * while unknown (no session_start in the bridge). `doneId` is the event_id of the last
@@ -91,8 +95,11 @@ export function readBridgeTurn(text, at = Infinity) {
   let open = null, doneId = null, doneQuestion = null, session = null;
   for (const event of readBridgeEvents(text)) {
     const ts = Date.parse(event.ts);
-    if (Number.isFinite(ts) && ts > at) continue;
-    if (event.type === 'session_start') {
+    if (Number.isFinite(ts) && ts > at + (event.type === 'ui_prompt_start' ? PROMPT_SKEW_MS : 0)) continue;
+    if (event.type === 'ui_prompt_start') {
+      // The writer saw its own turn open when the prompt appeared; that outranks a bridge with no turn event yet.
+      if (event.detail?.turn_open === true) open = true;
+    } else if (event.type === 'session_start') {
       // Rotation re-writes the same session_start; only another session resets.
       const id = event.detail?.session_id + ':' + event.detail?.pid;
       if (id !== session) { open = false; doneId = null; doneQuestion = null; }
@@ -107,7 +114,59 @@ export function readBridgeTurn(text, at = Infinity) {
   return { open, doneId, doneQuestion };
 }
 
+/** Whether a Pi turn is open but silent: `open`, the pid alive and heartbeats still arriving, no tool
+ * running, no prompt waiting for the user, and the last activity (turn_start, tool_start/tool_end,
+ * message_end, retrying, ui_prompt_end) at least `thresholdMs` ago. A tool_start without its tool_end
+ * is a long-running tool, never a stall. `key` names the episode: it changes with any new activity. */
+export function readBridgeStall(text, { now = Date.now(), thresholdMs, isAlive = pidAlive } = {}) {
+  let open = null, session = null, last = null, prompt = false, anonymous = 0;
+  const running = new Set();
+  const reset = () => { open = false; last = null; prompt = false; anonymous = 0; running.clear(); };
+  for (const event of readBridgeEvents(text)) {
+    const ts = Date.parse(event.ts);
+    const touch = () => { if (Number.isFinite(ts) && (last === null || ts > last)) last = ts; };
+    const id = event.detail?.tool_call_id;
+    switch (event.type) {
+      case 'session_start': {
+        const next = event.detail?.session_id + ':' + event.detail?.pid;
+        if (next !== session) reset();
+        session = next;
+        break;
+      }
+      case 'done': reset(); break;
+      case 'turn_start': open = true; touch(); break;
+      case 'retrying': open = true; touch(); break;
+      case 'tool_start':
+        open = true; touch();
+        if (typeof id === 'string' && id) running.add(id); else anonymous++;
+        break;
+      case 'tool_end':
+        open = true; touch();
+        if (typeof id === 'string' && id && running.has(id)) running.delete(id); else if (anonymous > 0) anonymous--;
+        break;
+      case 'message_end': touch(); break;
+      case 'ui_prompt_start':
+        prompt = true;
+        if (event.detail?.turn_open === true) { open = true; touch(); }
+        break;
+      case 'ui_prompt_end': prompt = false; touch(); break;
+      default:
+    }
+  }
+  const summary = readBridge(text);
+  const stalled = open === true && last !== null && !prompt && running.size === 0 && anonymous === 0
+    && Number.isFinite(thresholdMs) && now - last >= thresholdMs
+    && bridgeLiveness(summary, isAlive, now) === 'alive';
+  return { stalled, idleMs: last === null ? null : now - last, key: session + ':' + last };
+}
+
 const readText = (file) => { try { return readFileSync(file, 'utf8'); } catch { return ''; } };
+
+/** `readBridgeStall` over a pane's rotated + current bridge files. */
+export function paneBridgeStall(env, paneId, options) {
+  const file = bridgePanePath(env, paneId);
+  return readBridgeStall(readText(file + '.1') + readText(file), options);
+}
 
 /** `readBridgeTurn` over a pane's rotated + current bridge files (unknown without a bridge). */
 export function paneBridgeTurn(env, paneId, at) {

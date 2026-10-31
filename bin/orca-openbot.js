@@ -23,8 +23,11 @@ const USAGE = `Usage: orca-openbot <status|send|test-event|doctor>
                                            live Pi extension per pane. JSON adds checks, bridge[]
                                            (with pi_extension version/commit or unknown), plugin_version,
                                            machine_label and machine_label_source (config|hostname).
+                                           Also lists live panes with no enqueued event in the last
+                                           OPENBOT_ORCA_QUIET_MINUTES (default 60); JSON: quiet_panes[].
 
-Internal: flush (deliver the queue), ingest --pane ID (consume complete Pi JSONL records; quiet success).
+Internal: flush (deliver the queue), ingest --pane ID (consume complete Pi JSONL records, flag a stalled turn after
+OPENBOT_ORCA_STALLED_MINUTES, default 15; quiet success).
 
 Values that start with -- must be passed as --flag=VALUE (e.g. --text=--help).
 
