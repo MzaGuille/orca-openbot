@@ -29,7 +29,7 @@ function recordRetry(stateDir, err) {
   } catch { /* Observability must not prevent delivery. */ }
 }
 
-export const USER_AGENT = 'orca-openbot/0.2.1';
+export const USER_AGENT = 'orca-openbot/0.1.0';
 
 // Chunk long deadlines so Node's timer range cannot silently shorten them.
 function deadline(timeoutMs) {

@@ -1,6 +1,6 @@
 {
   "name": "orca-openbot",
-  "version": "0.2.1",
+  "version": "0.1.0",
   "description": "Bridge between Pi (Gentle Shell in Orca) and OpenBot: attention events out, acknowledged orders in",
   "type": "module",
   "private": true,
