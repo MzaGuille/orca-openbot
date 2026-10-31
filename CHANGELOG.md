@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0
+
+- Señal nueva `stalled`: un turno abierto sin `tool_start` ni `message_end` durante 15 minutos (configurable por entorno) con el heartbeat vivo avisa `orca.pane.stalled`. Un `tool_start` largo no cuenta como trabado. Cierra #6.
+- El bridge escribe `ui_prompt_start` (kind y title) y `ui_prompt_end`, y un prompt con el turno abierto ya no se descarta.
+- El payload completo de cada evento encolado queda en `~/.local/state/orca-openbot/events-full.jsonl`, con la misma redacción que el webhook y rotación por tamaño. `events.log` no cambia.
+- `doctor` lista los panes con heartbeat vivo y sin evento encolado en los últimos minutos.
+
+
 ## 0.1.1
 
 - Una pregunta en prosa de Pi bajo Gentle Shell llega como `question` y no como `done`. Un `agent_start` con el turno ya abierto ya no borra la pregunta capturada (`pi/bridge.js`, `pi/events.js`). Cierra #2.
