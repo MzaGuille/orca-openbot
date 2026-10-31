@@ -7,6 +7,7 @@ import { bridgePanePath, SCHEMA_VERSION } from '../events/pi-bridge.js';
 import { sanitizeAttentionRecord } from '../events/sanitize.js';
 import { envPaneId } from '../events/pi-path.js';
 import { trailingQuestion } from './question-text.js';
+import { spawnIngest as defaultSpawnIngest } from './runtime.js';
 
 export const HEARTBEAT_MS = 2 * 60 * 1000;
 export const MAX_LINE_BYTES = 4096;
@@ -57,7 +58,7 @@ export function appendBridgeEvent(file, event, { maxBytes = MAX_FILE_BYTES, carr
   }
 }
 
-export function registerPiBridge(pi, { env = process.env, now = Date.now, pid = process.pid,
+export function registerPiBridge(pi, { env = process.env, now = Date.now, pid = process.pid, spawnIngest = defaultSpawnIngest,
   setInterval: every = setInterval, clearInterval: stop = clearInterval } = {}) {
   const pane = envPaneId(env);
   let sessionId = null, timer = null, started = null;
@@ -81,7 +82,11 @@ export function registerPiBridge(pi, { env = process.env, now = Date.now, pid = 
       sessionId = sessionOf(ctx);
       runOpen = false; outcome = null; retry = null; pendingQuestion = null;
       write('session_start');
-      timer = every(() => write('heartbeat'), HEARTBEAT_MS);
+      // Ingest only runs when Pi appends a record, so a silent turn is evaluated on the heartbeat (stalled).
+      timer = every(() => {
+        write('heartbeat');
+        if (runOpen) { try { spawnIngest(env, pane); } catch {} }
+      }, HEARTBEAT_MS);
       timer?.unref?.();
     }),
     pi.on('session_shutdown', (_event, ctx) => {
@@ -108,7 +113,16 @@ export function registerPiBridge(pi, { env = process.env, now = Date.now, pid = 
       write('tool_start', { tool_call_id: event.toolCallId ?? null, tool_name: event.toolName ?? null,
         parent_tool_call_id: event.parentToolCallId ?? null });
     }),
+    pi.on('ui_prompt_start', event => {
+      // turn_open: the prompt appeared inside a running turn, whatever the turn events say yet.
+      write('ui_prompt_start', { kind: event.kind ?? null, title: event.title || '', turn_open: runOpen });
+    }),
+    pi.on('ui_prompt_end', event => {
+      write('ui_prompt_end', { kind: event.kind ?? null, title: event.title || '' });
+    }),
     pi.on('message_end', event => {
+      write('message_end', { role: event.message?.role ?? null,
+        stop_reason: typeof event.message?.stopReason === 'string' ? event.message.stopReason : null });
       if (event.message?.role !== 'assistant') return;
       if (typeof event.message.stopReason === 'string') stopReason = event.message.stopReason;
       pendingQuestion = trailingQuestion(event.message);

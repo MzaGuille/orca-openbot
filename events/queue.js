@@ -6,6 +6,7 @@ import {
   ensurePrivateDir, withLock, writeFileAtomic, tryCreateLock, readLockToken, removeLockIf, lockAgeMs, lockPid,
 } from '../core/fsutil.js';
 import { log } from './log.js';
+import { appendFullEvent } from './full-log.js';
 
 export const MAX_RETRIES = 3;
 export const BACKOFF_MS = [2000, 4000, 8000];
@@ -61,6 +62,7 @@ export function enqueue(dir, payload, now = Date.now()) {
   const f = files(dir);
   withLock(f.lock, () => {
     appendFileSync(f.queue, JSON.stringify({ payload, attempts: 0, next_at: now, last_error: null }) + '\n', { mode: 0o600 });
+    appendFullEvent(dir, payload);
   });
 }
 

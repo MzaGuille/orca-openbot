@@ -7,6 +7,8 @@ export const SIGNALS = [
     attention_kind: 'context', priority: 50, fixture: 'pi-context-info.json', description: 'Context info threshold crossing' },
   { id: 'pi-context-warn', source: 'pi-ext', match: { name: 'context', 'telemetry.level': 'warn' },
     attention_kind: 'context', priority: 60, fixture: 'pi-context-warn.json', description: 'Context warning suggests /compact' },
+  { id: 'pi-stalled', source: 'pi-ext', match: { name: 'stalled' },
+    attention_kind: 'stalled', priority: 60, fixture: 'pi-stalled.json', description: 'Open turn with no tool or message activity while the heartbeat is alive' },
   {
     "id": "osc-question",
     "source": "osc",

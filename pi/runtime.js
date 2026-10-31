@@ -15,7 +15,7 @@ import { sanitizeTelemetry } from '../events/telemetry.js';
 export { piRecordPath } from '../events/pi-path.js';
 
 const BIN = fileURLToPath(new URL('../bin/orca-openbot.js', import.meta.url));
-function spawnIngest(env, paneId) {
+export function spawnIngest(env, paneId) {
   const child = spawn(process.execPath, [BIN, 'ingest', '--pane=' + paneId], { env, detached: true, stdio: 'ignore' });
   child.on('error', () => {});
   child.unref();

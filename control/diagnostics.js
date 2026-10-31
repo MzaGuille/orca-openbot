@@ -8,6 +8,8 @@ import { isRouted, resolveTarget, routesView, routeSecretKey } from '../core/rou
 import { defaultStateDir, ensurePrivateDir } from '../core/fsutil.js';
 import { readBridge, bridgeLiveness, bridgePanePath, pidAlive, heartbeatAgeSeconds } from '../events/pi-bridge.js';
 const MAX_FILE_BYTES = 1024 * 1024;
+// events-full.jsonl rotates at 10 MiB; read a whole file so a busy pane cannot push another pane's last event out of view.
+const FULL_LOG_READ_BYTES = 11 * 1024 * 1024;
 import { existsSync } from 'node:fs';
 import { buildPayload, validatePayload, NOTIFY_STATES } from '../events/payload.js';
 import { postJson, immediateRetries } from '../events/webhook.js';
@@ -15,7 +17,7 @@ import { queueStats } from '../events/queue.js';
 import { CliError, EXIT, invalid } from './errors.js';
 import { sign, DELIVERY_ID_RE } from '../core/sign.js';
 import { listOrderProblems, cleanupOrders } from './orders.js';
-import { bridgeStaleMs, bridgeIsStale } from './bridges.js';
+import { bridgeStaleMs, bridgeIsStale, quietMs, quietPanes } from './bridges.js';
 
 export const VERSION = pluginVersion();
 // removed: Herdr plugin link status (plan-orca-openbot §3).
@@ -283,10 +285,15 @@ export async function doctor({ env = process.env, json = false, now = Date.now()
   checks.push(check('pi_extension', stale.length ? 'warn' : 'ok', bridge.length
     ? bridge.length + ' live Pi extension(s): ' + bridge.map((b) => b.pane + ' ' + b.state).join(', ') : 'no live Pi extension'));
   if (stale.length) checks.push(check('bridge_stale', 'warn', 'Pi bridge heartbeat older than ' + Math.round(bridgeStaleMs(env) / 1000) + 's on pane(s): ' + stale.map((b) => b.pane + ' (' + (b.heartbeat_age_s === null ? 'no heartbeat' : b.heartbeat_age_s + 's') + ')').join(', ')));
+  // #4: panes with a live heartbeat that enqueued nothing for N minutes (events-full.jsonl is the only per-pane record).
+  const quiet = quietPanes({ bridge, now, windowMs: quietMs(env),
+    lines: ['events-full.jsonl.1', 'events-full.jsonl'].flatMap((f) => readLines(join(stateDir, f), FULL_LOG_READ_BYTES)) });
+  if (quiet.length) checks.push(check('quiet_panes', 'warn', 'live Pi pane(s) with no enqueued event in the last ' + Math.round(quietMs(env) / 60000) + ' min: '
+    + quiet.map((q) => q.pane + (q.last_event_age_s === null ? ' (never)' : ' (' + q.last_event_age_s + 's ago)')).join(', ')));
   cleanupOrders(stateDir, now);
   const orders = listOrderProblems(stateDir, now);
   if (orders.length) checks.push(check('orders', 'warn', orders.map((o) => o.pane + ' ' + o.event_id + ' ' + o.state + ' ' + o.age_s + 's').join('; ')));
-  return { ok: !checks.some((c) => c.status === 'fail'), checks, bridge, orders,
+  return { ok: !checks.some((c) => c.status === 'fail'), checks, bridge, quiet_panes: quiet, orders,
     webhook_immediate_retries: webhookImmediateRetries, plugin_version: VERSION, ...(routes ? { routes } : {}),
     // #90: host is the same runtime-resolved label as machine_label (config label, else hostname), like events.
     host: cfg.machineLabel || resolvedHost(hostname), machine_label: cfg.machineLabel || resolvedHost(hostname), machine_label_source: cfg.machineLabel ? 'config' : 'hostname', state_dir: stateDir, webhook_secret_source: cfg.sources.secret ?? null };
